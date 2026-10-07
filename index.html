@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Backpressure Bench</title>
+<style>body{margin:0;padding:0}</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root{
+    --paper:#F4F6F3; --surface:#FFFFFF; --sunk:#ECF0EC;
+    --ink:#16201B; --ink-soft:#56615B; --ink-faint:#85908A;
+    --rule:#DDE2DD; --rule-soft:#EAEEEA;
+    --signal:#1F6F5C; --signal-wash:#E4F1EC;
+    --danger:#B23A2A; --danger-wash:#F8E7E4;
+    --q:#eb6834; --rg:#eda100; --file:#2a78d6; --base:#9AA39D; --ok:#1baf7a;
+    --stage:#FFFFFF; --stage-edge:#CFD6D1;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --paper:#121614; --surface:#191E1B; --sunk:#151A17;
+      --ink:#EEF2EE; --ink-soft:#A3ADA6; --ink-faint:#737E77;
+      --rule:#2A312D; --rule-soft:#222824;
+      --signal:#5FC3A7; --signal-wash:#17302A;
+      --danger:#E07B6B; --danger-wash:#3A1F1A;
+      --q:#d95926; --rg:#c98500; --file:#3987e5; --base:#5F6B64; --ok:#199e70;
+      --stage:#1F2521; --stage-edge:#3A433D;
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#121614; --surface:#191E1B; --sunk:#151A17;
+    --ink:#EEF2EE; --ink-soft:#A3ADA6; --ink-faint:#737E77;
+    --rule:#2A312D; --rule-soft:#222824;
+    --signal:#5FC3A7; --signal-wash:#17302A;
+    --danger:#E07B6B; --danger-wash:#3A1F1A;
+    --q:#d95926; --rg:#c98500; --file:#3987e5; --base:#5F6B64; --ok:#199e70;
+    --stage:#1F2521; --stage-edge:#3A433D;
+  }
+  *{box-sizing:border-box}
+  body{background:var(--paper);color:var(--ink);font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:13px;line-height:1.45;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1240px;margin:0 auto;padding:22px 24px 40px}
+  h1{font-family:"Bricolage Grotesque",system-ui,sans-serif;font-weight:800;font-size:clamp(1.6rem,3vw,2.2rem);letter-spacing:-.025em;margin:0;line-height:1.05}
+  .sub{color:var(--ink-soft);margin:6px 0 16px;max-width:90ch}
+  .bar{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;padding:12px 14px;border:1px solid var(--rule);border-radius:4px;background:var(--surface);margin-bottom:12px}
+  .grp{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .grp .k{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-faint)}
+  button{font:inherit;font-size:12.5px;padding:7px 12px;border:1px solid var(--rule);border-radius:3px;background:var(--surface);color:var(--ink);cursor:pointer}
+  button.primary{background:var(--signal);border-color:var(--signal);color:#fff;font-weight:600}
+  button:hover{border-color:var(--ink-faint)}
+  button.preset[aria-pressed="true"],button.sink[aria-pressed="true"]{background:var(--signal-wash);border-color:var(--signal);color:var(--ink)}
+  .toggles{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:10px;margin-bottom:12px}
+  .tog{border:1px solid var(--rule);border-radius:4px;background:var(--surface);padding:10px 12px;display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:start}
+  .tog input{width:18px;height:18px;margin-top:2px;accent-color:var(--signal)}
+  .tog b{font-family:"Bricolage Grotesque",sans-serif;font-weight:700;font-size:13.5px;display:block}
+  .tog .m{color:var(--ink-soft);font-size:11.5px;margin-top:3px}
+  .tog .sw{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+  .stage{position:relative}
+  canvas{display:block;width:100%;height:auto;border:1px solid var(--rule);border-radius:4px;background:var(--surface)}
+  .tip{position:absolute;pointer-events:none;display:none;max-width:360px;background:var(--surface);border:1px solid var(--rule);border-radius:3px;padding:6px 9px;font-size:11.5px;color:var(--ink);box-shadow:0 2px 8px rgba(0,0,0,.10);white-space:normal;line-height:1.4;z-index:2}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;margin:10px 0 0;color:var(--ink-soft);font-size:11.5px}
+  .legend i{display:inline-block;width:12px;height:9px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+  .status{margin-top:10px;font-size:12.5px;min-height:1.6em}
+  .status.oom{color:var(--danger);font-weight:600}
+  .status.done{color:var(--signal);font-weight:600}
+  input[type=range]{accent-color:var(--signal);width:150px}
+  .foot{margin-top:14px;color:var(--ink-faint);font-size:11px;line-height:1.6}
+  :focus-visible{outline:2px solid var(--signal);outline-offset:2px}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <h1>Backpressure Bench</h1>
+  <p class="sub">A CTAS from Snowflake into DuckLake, as one process: the warehouse produces, the Parquet writer consumes, and three allocators in between hold whatever the gap becomes. Toggle the three bounds, pick the sink, and run it against an 8 GiB pod.</p>
+
+  <div class="bar">
+    <div class="grp"><span class="k">preset</span>
+      <button class="preset" data-p="found">as found</button>
+      <button class="preset" data-p="rg">+ row group</button>
+      <button class="preset" data-p="file">+ file size</button>
+      <button class="preset" data-p="all">+ queue = 1</button>
+    </div>
+    <div class="grp"><span class="k">sink</span>
+      <button class="sink" data-s="gcs" aria-pressed="true">object storage (GCS)</button>
+      <button class="sink" data-s="local">local disk</button>
+    </div>
+    <div class="grp"><button id="run" class="primary">Run</button><button id="reset">Reset</button></div>
+    <div class="grp"><span class="k">speed</span><input id="speed" type="range" min="1" max="12" value="6"><span id="speedv">6×</span></div>
+  </div>
+
+  <div class="toggles">
+    <label class="tog"><input type="checkbox" id="fixRG"><div><b><span class="sw" style="background:var(--rg)"></span>Row groups: <code>parquet_row_group_size_bytes = 32MB</code></b><div class="m">Consumer side. DuckLake buffers a whole row group <em>per column</em> before flushing, so the buffer scales with width. Measured on a 72-column write: 2772 → 1360 MiB.</div></div></label>
+    <label class="tog"><input type="checkbox" id="fixFile"><div><b><span class="sw" style="background:var(--file)"></span>Files: <code>target_file_size = 256MB</code></b><div class="m">Consumer side. httpfs holds every uploaded part until the Parquet file completes, so the file's bytes stay resident. Measured: 650 → 373 MiB per file.</div></div></label>
+    <label class="tog"><input type="checkbox" id="fixQ"><div><b><span class="sw" style="background:var(--q)"></span>Read-ahead: <code>result_queue_size = 1</code></b><div class="m">Producer side. The ADBC driver otherwise downloads the whole result at network speed whether or not anyone is reading. Measured on a 20M-row read behind a slow writer: 3325 → 286 MiB.</div></div></label>
+  </div>
+
+  <div class="stage"><canvas id="c" width="1240" height="640" aria-label="Animated pipeline: Snowflake to driver to DuckDB to Parquet row groups to file buffer to GCS, with a memory meter against the 8 GiB pod limit"></canvas><div class="tip" id="tip"></div></div>
+  <div class="legend">
+    <span><i style="background:var(--base)"></i>process baseline</span>
+    <span><i style="background:var(--ok)"></i>streams downloading</span>
+    <span><i style="background:var(--q)"></i>records in driver channels, unread</span>
+    <span><i style="background:var(--rg)"></i>row-group buffers</span>
+    <span><i style="background:var(--file)"></i>file buffer (upload)</span>
+    <span><i style="background:var(--ok)"></i>delivered / written</span>
+  </div>
+  <div class="status" id="status">Pick a preset or toggle the bounds, then Run.</div>
+  <p class="foot">Model, not measurement: a 150M-row, 50-column source (~25 GB of Arrow, ~5.5 GB of Parquet) read at ~200 MB/s and written to object storage at ~25 MB/s (or to local disk at ~250 MB/s, where the file streams instead of being held — the same write measured 149 MiB locally against 2979 MiB to GCS), on a pod with a ~2.5 GiB resident baseline and an 8 GiB limit. Rates and thresholds are set so the behaviour matches what was measured; the numbers on the toggles are the real ones. Both consumer-side bounds are still live in production; the read-ahead bound is the one that closes the gap.</p>
+</div>
+
+<script>
+(function(){
+  const cv=document.getElementById('c'), ctx=cv.getContext('2d');
+  const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+  const $=id=>document.getElementById(id);
+  const MiB=1, GiB=1024;
+  // --- the world (units: MiB of Arrow unless stated) ------------------------
+  // Rates are set so the "as found" run dies about a minute in, as production did, and the
+  // consumer-side bounds each remove a real but insufficient slice — also as production did.
+  const WORLD={ totalArrow:25*GiB, parquetRatio:0.22, producerRate:200, consumerRate:25 /* MiB/s of Parquet */,
+    baseline:2.5*GiB, limit:8*GiB, cols:50, batchMiB:32, streams:5, recordsPerStream:8 };
+  // The sink decides the consumer. Object storage: ~25 MB/s and httpfs holds every uploaded part
+  // until the file completes. Local disk: an order of magnitude faster, and the file streams —
+  // the same write measured 149 MiB to local disk against 2979 MiB to GCS or S3.
+  const SINKS={ gcs:{rate:25, holdsFile:true, label:'GCS bucket', sub:f=>`${f} Parquet files landed`},
+                local:{rate:250, holdsFile:false, label:'Local disk', sub:f=>`${f} Parquet files written`} };
+  let sink='gcs';
+  // per-fix thresholds (MiB of buffer resident)
+  const RG={off:1800, on:400};        // a whole row group buffered per column across a 50-column source
+  const FILE={off:512, on:256};       // the Parquet file's bytes, held by httpfs until the file completes
+  // result_queue_size is the capacity of EACH stream's channel, not a cap on the pile. A stream's
+  // goroutine parks only when its own channel is full; with 100 and streams of 8 records it never
+  // does, so the pile of downloaded-but-unconsumed records is bounded by nothing but the result.
+  const Q={off:100, on:1};
+  let S; function reset(){
+    S={t:0, produced:0, consumed:0, consAcc:0, streams:[], nextStream:0, cursor:0, blocked:0, rg:0, file:0, files:[], mem:[], running:false, oom:false, done:false};
+    S.totalStreams=Math.ceil(WORLD.totalArrow/(WORLD.batchMiB*WORLD.recordsPerStream));
+    status('Pick a preset or toggle the bounds, then Run.',''); draw();
+  }
+  function fixes(){ return {rg:$('fixRG').checked, file:$('fixFile').checked, q:$('fixQ').checked}; }
+  function waiting(){ let n=0; for(const st of S.streams) n+=st.channel; return n; }
+  function mem(){ const q=waiting()*WORLD.batchMiB; const file=SINKS[sink].holdsFile?S.file:0; return {base:WORLD.baseline, q, rg:S.rg, file, total:WORLD.baseline+q+S.rg+file}; }
+  // --- step -------------------------------------------------------------------
+  function step(dt){
+    if(!S.running||S.oom||S.done) return;
+    const f=fixes(); S.t+=dt;
+    // producer: network delivers batches; blocked only when the queue bound is on and full
+    const qcap=f.q?Q.on:Q.off; S.blocked=0;
+    // launch loop: up to `streams` goroutines run at once; a goroutine ends when its stream is fully
+    // downloaded AND every record has been pushed into its channel. It parks (still holding its
+    // slot) when the channel is full — which with capacity 100 never happens.
+    const active=S.streams.filter(st=>!st.done);
+    while(active.length<WORLD.streams && S.nextStream<S.totalStreams){ const st={id:S.nextStream++, pushed:0, progress:0, channel:0, drained:0, done:false}; S.streams.push(st); active.push(st); }
+    // a chunk's body arrives at network speed whatever the consumer does; the channel bound gates
+    // only decode-and-push, which is why result_queue_size=1 costs a fast consumer nothing
+    const per=(WORLD.producerRate/WORLD.streams)*dt/(WORLD.batchMiB*WORLD.recordsPerStream);
+    for(const st of active){
+      st.progress=Math.min(1,st.progress+per);
+      const decodable=Math.floor(st.progress*WORLD.recordsPerStream)-st.pushed;
+      let avail=decodable;
+      while(avail>0 && st.channel<qcap){ st.channel++; st.pushed++; S.produced+=WORLD.batchMiB; avail--; }
+      if(avail>0) S.blocked++;                                   // parked: decoded record in hand, channel full
+      if(st.pushed>=WORLD.recordsPerStream) st.done=true;
+    }
+    // consumer: Parquet bytes per second → Arrow bytes drained
+    S.consAcc+=SINKS[sink].rate*dt/WORLD.parquetRatio;
+    // Next() drains channels in stream order: the cursor moves on only when a stream is fully
+    // downloaded and its channel is empty
+    while(S.consAcc>=WORLD.batchMiB){
+      const cur=S.streams[S.cursor]; if(!cur) break;
+      if(cur.channel===0){ if(cur.done) { S.cursor++; continue; } break; }
+      cur.channel--; cur.drained++; S.consumed+=WORLD.batchMiB; S.consAcc-=WORLD.batchMiB;
+      // rows land in row-group buffers (Arrow bytes resident until the group flushes as Parquet)
+      S.rg+=WORLD.batchMiB; const rgcap=f.rg?RG.on:RG.off;
+      if(S.rg>=rgcap){ S.file+=S.rg*WORLD.parquetRatio; S.rg=0; }
+      const fcap=f.file?FILE.on:FILE.off;
+      if(S.file>=fcap){ S.files.push(S.file); S.file=0; }
+    }
+    if(waiting()===0) S.consAcc=Math.min(S.consAcc, WORLD.batchMiB); // an idle consumer does not bank credit
+    const m=mem(); S.mem.push([S.t,m.total]);
+    if(m.total>=WORLD.limit){ S.oom=true; S.running=false; status(`OOMKilled at t = ${S.t.toFixed(0)} s — ${(m.total/GiB).toFixed(2)} GiB against 8 GiB. Written: ${(S.files.reduce((a,b)=>a+b,0)/GiB).toFixed(2)} GB of ${(WORLD.totalArrow*WORLD.parquetRatio/GiB).toFixed(1)} GB.`,'oom'); $('run').textContent='Run'; }
+    else if(S.produced>=WORLD.totalArrow && waiting()===0){ if(S.rg>0){S.file+=S.rg*WORLD.parquetRatio;S.rg=0;} if(S.file>0){S.files.push(S.file);S.file=0;} S.done=true; S.running=false;
+      const pk=Math.max(...S.mem.map(p=>p[1])); status(`Built in ${S.t.toFixed(0)} s. Peak ${(pk/GiB).toFixed(2)} GiB (+${((pk-WORLD.baseline)/GiB).toFixed(2)} over baseline), ${S.files.length} files landed.`,'done'); $('run').textContent='Run'; }
+  }
+  function status(t,cls){ const el=$('status'); el.textContent=t; el.className='status '+(cls||''); }
+  // --- draw -------------------------------------------------------------------
+  const W=cv.width,H=cv.height;
+  function box(x,y,w,h,title,sub){ ctx.fillStyle=css('--stage'); ctx.strokeStyle=css('--stage-edge'); ctx.lineWidth=1; rr(x,y,w,h,6); ctx.fill(); ctx.stroke();
+    ctx.fillStyle=css('--ink'); ctx.font='700 13px "Bricolage Grotesque", sans-serif'; ctx.fillText(title,x+12,y+22);
+    if(sub){ctx.fillStyle=css('--ink-faint'); ctx.font='10.5px "IBM Plex Mono", monospace'; label(sub,x+12,y+38,w-24,1);} }
+  // Canvas neither wraps nor clips text. `label` wraps to at most `lines` lines within maxW and
+  // ellipsizes the last; every stage's contents are also drawn inside a clip of the box.
+  let hits=[]; // hover targets registered during draw: {x,y,w,h,text}
+  function label(text,x,y,maxW,lines=2,lineH=13){
+    const words=String(text).split(' '); let line='', out=[];
+    for(const wd of words){ const t=line?line+' '+wd:wd; if(ctx.measureText(t).width<=maxW||!line) line=t; else { out.push(line); line=wd; } }
+    if(line) out.push(line);
+    let truncated=false;
+    if(out.length>lines){ truncated=true; out=out.slice(0,lines); let last=out[lines-1]; while(last.length>1&&ctx.measureText(last+'…').width>maxW) last=last.slice(0,-1); out[lines-1]=last+'…'; }
+    out.forEach((l,i)=>ctx.fillText(l,x,y+i*lineH));
+    if(truncated) hits.push({x, y:y-lineH+2, w:maxW, h:out.length*lineH+2, text:String(text)});
+    return out.length;
+  }
+  function clipBox(x,y,w,h,fn){ ctx.save(); ctx.beginPath(); ctx.rect(x+1,y+1,w-2,h-2); ctx.clip(); fn(); ctx.restore(); }
+  function rr(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+  function arrow(x1,y,x2,active){ ctx.strokeStyle=active?css('--signal'):css('--rule'); ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(x1,y); ctx.lineTo(x2-8,y); ctx.stroke(); ctx.fillStyle=active?css('--signal'):css('--rule'); ctx.beginPath(); ctx.moveTo(x2,y); ctx.lineTo(x2-9,y-5); ctx.lineTo(x2-9,y+5); ctx.fill(); }
+  function draw(){
+    ctx.clearRect(0,0,W,H); hits=[]; const f=fixes(); const m=mem();
+    // stage geometry
+    const top=24, h=300, gap=22, n=5, w=(W-48-gap*(n-1))/n; const xs=[...Array(n)].map((_,i)=>24+i*(w+gap));
+    const active=S.running;
+    // 1 Snowflake
+    box(xs[0],top,w,h,'Snowflake','chunks at network speed');
+    const pf=S.produced/WORLD.totalArrow; ctx.fillStyle=css('--sunk'); rr(xs[0]+14,top+60,w-28,h-90,4); ctx.fill();
+    ctx.fillStyle=css('--ok'); rr(xs[0]+14,top+60+(h-90)*(1-pf),w-28,(h-90)*pf,4); ctx.fill();
+    ctx.fillStyle=css('--ink-soft'); ctx.font='11px "IBM Plex Mono", monospace'; label(`${(pf*100).toFixed(0)}% delivered`,xs[0]+14,top+h-14,w-28,1);
+    arrow(xs[0]+w,top+h/2,xs[1],active&&S.produced<WORLD.totalArrow&&S.blocked<WORLD.streams);
+    // 2 Driver
+    box(xs[1],top,w,h,'ADBC driver',f.q?'channel cap 1 · parks when full':'channel cap 100 · never fills');
+    const qn=waiting();
+    clipBox(xs[1],top,w,h,()=>{
+    // the five download slots, at the bottom of the driver box
+    const activeS=S.streams.filter(st=>!st.done), qcapD=f.q?Q.on:Q.off;
+    const sn=WORLD.streams, sw=Math.floor((w-28-(sn-1)*8)/sn), sh=34, sy=top+h-16-sh;
+    for(let i=0;i<sn;i++){ const x=xs[1]+14+i*(sw+8), st=activeS[i]; const pr=st?st.progress:0, parked=st&&st.channel>=qcapD&&Math.floor(st.progress*WORLD.recordsPerStream)>st.pushed;
+      ctx.fillStyle=css('--sunk'); ctx.fillRect(x,sy,sw,sh); if(st){ ctx.fillStyle=css('--ok'); ctx.fillRect(x,sy+sh*(1-pr),sw,sh*pr); }
+      if(parked){ ctx.strokeStyle=css('--q'); ctx.lineWidth=2; ctx.strokeRect(x+1,sy+1,sw-2,sh-2); } }
+    ctx.fillStyle=css('--ink-faint'); ctx.font='10.5px "IBM Plex Mono", monospace';
+    label(S.blocked?`${activeS.length} goroutines · ${S.blocked} parked, channel full`:`${activeS.length} goroutines downloading`,xs[1]+14,sy-6,w-28,1);
+    // records in channels, drawn per channel: an active stream's channel stacks directly above its
+    // goroutine's slot; a finished stream's channel (goroutine gone, records unread) stacks in the
+    // row above. With cap 1 the top row stays empty and each slot carries at most one square.
+    const cell=6;
+    ctx.fillStyle=css('--q');
+    for(let i=0;i<sn;i++){ const st=activeS[i]; if(!st) continue; const x=xs[1]+14+i*(sw+8)+Math.floor(sw/2)-cell/2; for(let r=0;r<st.channel;r++) ctx.fillRect(x, sy-12-(r+1)*(cell+2), cell, cell); }
+    const doneQ=S.streams.filter(st=>st.done&&st.channel>0), colW=cell+2, maxCols=Math.floor((w-28)/colW), rowTop=top+70, rowBottom=sy-12-(WORLD.recordsPerStream+1)*(cell+2)-8;
+    const shownCols=Math.min(doneQ.length,maxCols);
+    for(let c=0;c<shownCols;c++){ const st=doneQ[c]; const x=xs[1]+14+c*colW; for(let r=0;r<st.channel;r++) ctx.fillRect(x, rowBottom-(r+1)*(cell+2), cell, cell); }
+    ctx.fillStyle=css('--ink-faint'); ctx.font='10.5px "IBM Plex Mono", monospace';
+    if(doneQ.length>shownCols) label(`+${doneQ.length-shownCols} more channels`, xs[1]+14, rowBottom+12, w-28, 1);
+    label(doneQ.length?`${doneQ.length} channels downloaded, unread`:'no downloaded channels waiting', xs[1]+14, rowTop-4, w-28, 1);
+    const chans=S.streams.filter(st=>st.channel>0).length;
+    ctx.fillStyle=qn>WORLD.streams?css('--q'):css('--ink-soft'); ctx.font='700 12px "IBM Plex Mono", monospace'; label(`${qn} records in ${chans} channels · ${(m.q/GiB).toFixed(2)} GiB`,xs[1]+14,top+58,w-28,1);
+    });
+    arrow(xs[1]+w,top+h/2,xs[2],active&&qn>0);
+    // 3 DuckDB
+    box(xs[2],top,w,h,'DuckDB','memory_limit sees none of this');
+    ctx.fillStyle=css('--ink-faint'); ctx.font='10.5px "IBM Plex Mono", monospace';
+    ['reads one batch at a time','converts to row groups','hands each group to the writer'].forEach((s,i)=>label(s,xs[2]+14,top+80+i*18,w-28,1));
+    ctx.fillStyle=css('--ink-soft'); ctx.font='700 12px "IBM Plex Mono", monospace'; label(`${(S.consumed/GiB).toFixed(1)} / ${(WORLD.totalArrow/GiB).toFixed(0)} GB consumed`,xs[2]+14,top+h-14,w-28,1);
+    arrow(xs[2]+w,top+h/2,xs[3],active&&qn>0);
+    // 4 Parquet writer (row groups → file)
+    box(xs[3],top,w,h,'Parquet writer',(f.rg?'row group 32MB':'row group 122k rows')+' · '+(f.file?'file 256MB':'file 512MB'));
+    const rgcap=f.rg?RG.on:RG.off, fcap=f.file?FILE.on:FILE.off;
+    clipBox(xs[3],top,w,h,()=>{
+    // per-column bars
+    const cols=12, bw=(w-28-(cols-1)*3)/cols, bh=90, by=top+70; for(let i=0;i<cols;i++){ const x=xs[3]+14+i*(bw+3); ctx.fillStyle=css('--sunk'); ctx.fillRect(x,by,bw,bh); const fr=Math.min(1,S.rg/rgcap); ctx.fillStyle=css('--rg'); ctx.fillRect(x,by+bh*(1-fr),bw,bh*fr); }
+    ctx.fillStyle=css('--ink-soft'); ctx.font='11px "IBM Plex Mono", monospace'; label(`per-column buffers · ${S.rg.toFixed(0)} / ${rgcap} MiB`,xs[3]+14,by+bh+16,w-28,1);
+    // file buffer
+    const fy=by+bh+30, fh=h-(fy-top)-40; ctx.fillStyle=css('--sunk'); rr(xs[3]+14,fy,w-28,fh,4); ctx.fill(); const ff=Math.min(1,S.file/fcap); ctx.fillStyle=css('--file'); rr(xs[3]+14,fy,(w-28)*ff,fh,4); ctx.fill();
+    ctx.fillStyle=css('--ink-soft'); label(SINKS[sink].holdsFile?`file buffer · ${S.file.toFixed(0)} / ${fcap} MB held`:`file · ${S.file.toFixed(0)} / ${fcap} MB, streams`,xs[3]+14,top+h-14,w-28,1);
+    });
+    arrow(xs[3]+w,top+h/2,xs[4],active&&S.file>0);
+    // 5 GCS
+    box(xs[4],top,w,h,SINKS[sink].label,SINKS[sink].sub(S.files.length));
+    const landed=S.files.reduce((a,b)=>a+b,0), tot=WORLD.totalArrow*WORLD.parquetRatio;
+    ctx.fillStyle=css('--sunk'); rr(xs[4]+14,top+60,w-28,h-90,4); ctx.fill(); const lf=Math.min(1,landed/tot); ctx.fillStyle=css('--ok'); rr(xs[4]+14,top+60+(h-90)*(1-lf),w-28,(h-90)*lf,4); ctx.fill();
+    // files as bricks
+    ctx.fillStyle=css('--surface'); const fb=Math.min(S.files.length,60); for(let i=0;i<fb;i++){ const fx=xs[4]+16+(i%6)*((w-32)/6), fyy=top+h-34-Math.floor(i/6)*9; ctx.fillRect(fx,fyy,(w-32)/6-3,6); }
+    ctx.fillStyle=css('--ink-soft'); label(`${(landed/GiB).toFixed(2)} / ${(tot/GiB).toFixed(1)} GB written`,xs[4]+14,top+h-14,w-28,1);
+
+    // --- memory meter -----------------------------------------------------------
+    const my=top+h+34; ctx.fillStyle=css('--ink'); ctx.font='700 13px "Bricolage Grotesque", sans-serif'; ctx.fillText('Pod memory against the 8 GiB limit',24,my);
+    const mx=24, mw=W-48, mh=26, myy=my+12, sc=mw/WORLD.limit;
+    ctx.fillStyle=css('--sunk'); rr(mx,myy,mw,mh,4); ctx.fill();
+    let x=mx; [['--base',m.base,'process baseline: bun/Node, 3 fixed DuckDB instances, loaded packages'],['--q',m.q,'driver read-ahead: records in channels, unread'],['--rg',m.rg,'DuckLake row-group buffers (per column)'],['--file',m.file,'httpfs file buffer: uploaded parts held until the file completes']].forEach(([c,v,name])=>{ const ww=Math.max(0,Math.min(v*sc, mx+mw-x)); if(ww>0){ ctx.fillStyle=css(c); ctx.fillRect(x,myy,ww,mh); hits.push({x, y:myy, w:ww, h:mh, text:`${name} — ${v>=GiB?(v/GiB).toFixed(2)+' GiB':v.toFixed(0)+' MiB'}`}); } x+=ww; });
+    ctx.strokeStyle=css('--danger'); ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(mx+mw-1,myy-6); ctx.lineTo(mx+mw-1,myy+mh+6); ctx.stroke();
+    ctx.fillStyle=S.oom?css('--danger'):css('--ink'); ctx.font='700 12px "IBM Plex Mono", monospace'; ctx.fillText(`${(m.total/GiB).toFixed(2)} GiB`,mx,myy+mh+18);
+    ctx.fillStyle=css('--ink-faint'); ctx.font='10.5px "IBM Plex Mono", monospace'; ctx.textAlign='right'; ctx.fillText('8 GiB limit',mx+mw,myy+mh+18); ctx.textAlign='left';
+    // --- trace ------------------------------------------------------------------
+    const ty=myy+mh+40, th=H-ty-28, tx=mx+44, tw=mw-44; const tmax=Math.max(60, S.mem.length?S.mem[S.mem.length-1][0]*1.15:60);
+    ctx.strokeStyle=css('--rule-soft'); ctx.lineWidth=1; [0,2,4,6,8].forEach(g=>{ const yy=ty+th-(g*GiB/WORLD.limit)*th; ctx.beginPath(); ctx.moveTo(tx,yy); ctx.lineTo(tx+tw,yy); ctx.stroke(); ctx.fillStyle=css('--ink-faint'); ctx.font='10px "IBM Plex Mono", monospace'; ctx.textAlign='right'; ctx.fillText(g+' GiB',tx-6,yy+3); ctx.textAlign='left'; });
+    ctx.strokeStyle=css('--danger'); ctx.setLineDash([4,4]); ctx.beginPath(); ctx.moveTo(tx,ty); ctx.lineTo(tx+tw,ty); ctx.stroke(); ctx.setLineDash([]);
+    if(S.mem.length>1){ ctx.strokeStyle=S.oom?css('--danger'):(f.q?css('--ok'):css('--q')); ctx.lineWidth=2; ctx.beginPath(); S.mem.forEach((p,i)=>{ const px=tx+(p[0]/tmax)*tw, py=ty+th-Math.min(1,p[1]/WORLD.limit)*th; i?ctx.lineTo(px,py):ctx.moveTo(px,py); }); ctx.stroke(); }
+    ctx.fillStyle=css('--ink-faint'); ctx.font='10px "IBM Plex Mono", monospace'; ctx.fillText(`t = ${S.t.toFixed(0)} s`,tx,H-10); ctx.textAlign='right'; ctx.fillText(`${tmax.toFixed(0)} s`,tx+tw,H-10); ctx.textAlign='left';
+  }
+  // --- loop / controls ------------------------------------------------------
+  let last=performance.now(); function loop(now){ const real=Math.min(0.05,(now-last)/1000); last=now; const sp=+$('speed').value; if(S.running){ for(let i=0;i<sp;i++) step(real); } draw(); requestAnimationFrame(loop); }
+  $('run').addEventListener('click',()=>{ if(S.oom||S.done) reset(); S.running=!S.running; $('run').textContent=S.running?'Pause':'Run'; if(S.running) status('Running…',''); });
+  $('reset').addEventListener('click',reset);
+  const tip=$('tip'), stage=cv.parentElement;
+  cv.addEventListener('mousemove',e=>{ const r=cv.getBoundingClientRect(); const px=(e.clientX-r.left)*(W/r.width), py=(e.clientY-r.top)*(H/r.height);
+    const h=hits.find(t=>px>=t.x&&px<=t.x+t.w&&py>=t.y&&py<=t.y+t.h);
+    if(!h){ tip.style.display='none'; return; }
+    tip.textContent=h.text; tip.style.display='block'; const sr=stage.getBoundingClientRect(); const lx=e.clientX-sr.left, ly=e.clientY-sr.top;
+    tip.style.left=(lx+14+tip.offsetWidth>sr.width? lx-tip.offsetWidth-14 : lx+14)+'px'; tip.style.top=(ly-10)+'px'; });
+  cv.addEventListener('mouseleave',()=>{ tip.style.display='none'; });
+  $('speed').addEventListener('input',e=>$('speedv').textContent=e.target.value+'×');
+  const presets={found:[0,0,0], rg:[1,0,0], file:[1,1,0], all:[1,1,1]};
+  document.querySelectorAll('.preset').forEach(b=>b.addEventListener('click',()=>{ const p=presets[b.dataset.p]; $('fixRG').checked=!!p[0]; $('fixFile').checked=!!p[1]; $('fixQ').checked=!!p[2]; document.querySelectorAll('.preset').forEach(x=>x.setAttribute('aria-pressed',x===b)); reset(); }));
+  ['fixRG','fixFile','fixQ'].forEach(id=>$(id).addEventListener('change',()=>{ document.querySelectorAll('.preset').forEach(x=>x.setAttribute('aria-pressed','false')); if(!S.running) draw(); }));
+  document.querySelectorAll('.sink').forEach(b=>b.addEventListener('click',()=>{ sink=b.dataset.s; document.querySelectorAll('.sink').forEach(x=>x.setAttribute('aria-pressed',x===b)); reset(); }));
+  document.querySelector('.preset[data-p="found"]').setAttribute('aria-pressed','true');
+  reset(); requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
